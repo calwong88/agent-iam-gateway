@@ -1,0 +1,5 @@
+[
+  {"id": "E001", "name": "Jordan Smith", "department": "Finance", "email": "jordan.smith@company.com"},
+  {"id": "E002", "name": "Priya Patel", "department": "Engineering", "email": "priya.patel@company.com"},
+  {"id": "E003", "name": "Marcus Lee", "department": "HR", "email": "marcus.lee@company.com"}
+]
