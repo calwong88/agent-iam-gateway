@@ -5,3 +5,16 @@ roles:
     allow: [lookup_employee, read_document]
   it_admin:
     allow: [lookup_employee, reset_password, delete_file]
+
+tools:
+  lookup_employee: {risk: low}
+  read_document:   {risk: low}
+  send_email:      {risk: medium}
+  reset_password:  {risk: high, requires_approval: true}
+  delete_file:     {risk: high, requires_approval: true}
+
+constraints:
+  delete_file:
+    path_must_start_with: "sandbox/"
+  send_email:
+    to_domain_allowlist: ["company.com"]

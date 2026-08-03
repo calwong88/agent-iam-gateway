@@ -3,13 +3,31 @@ import json
 import sys
 import policy
 import yaml
+import approval
 from pathlib import Path
+import time
+from collections import defaultdict, deque
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp import FastMCP
 
 gateway = FastMCP("agent-iam-gateway")
+
+RATE_LIMIT = 10   # calls per agent
+WINDOW_S = 60     # per rolling window
+_call_log = defaultdict(deque)
+
+def _rate_limited(agent_id: str) -> bool:
+    now = time.time()
+    q = _call_log[agent_id]
+    while q and now - q[0] > WINDOW_S:
+        q.popleft()
+    if len(q) >= RATE_LIMIT:
+        return True
+    q.append(now)
+    return False
+
 
 # How to launch the downstream server we protect
 CORP_TOOLS = StdioServerParameters(
@@ -46,10 +64,17 @@ async def call_tool(api_key: str, tool_name: str, arguments: dict) -> str:
     agent = policy.authenticate(api_key)
     if agent is None:
         return "DENIED: unknown agent."
+    if _rate_limited(agent["id"]):
+        return "DENIED: rate limit exceeded."
     if not policy.authorize(agent["role"], tool_name):
         return f"DENIED: role '{agent['role']}' is not permitted to use '{tool_name}'."
+    reason = policy.check_constraints(tool_name, arguments)
+    if reason:
+        return f"DENIED: constraint violation - {reason}."
+    if policy.requires_approval(tool_name):
+        if not await approval.request_approval(agent["id"], tool_name, arguments):
+            return "DENIED: not approved by operator (or timed out)."
     return await _forward(tool_name, arguments)
-
 
 if __name__ == "__main__":
     gateway.run()

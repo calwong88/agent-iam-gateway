@@ -25,3 +25,22 @@ def authorize(role: str, tool_name: str) -> bool:
     """AuthZ: is this role allowed to use this tool? Deny by default."""
     roles = _load("policies.yaml")["roles"]
     return tool_name in roles.get(role, {}).get("allow", [])
+
+def check_constraints(tool_name: str, arguments: dict) -> str | None:
+    """Parameter-level least privilege. Returns a denial reason, or None if OK."""
+    cons = _load("policies.yaml").get("constraints", {}).get(tool_name)
+    if not cons:
+        return None
+    if "path_must_start_with" in cons:
+        prefix = cons["path_must_start_with"]
+        if not str(arguments.get("path", "")).startswith(prefix):
+            return f"path must start with '{prefix}'"
+    if "to_domain_allowlist" in cons:
+        domain = str(arguments.get("to", "")).rsplit("@", 1)[-1]
+        if domain not in cons["to_domain_allowlist"]:
+            return f"recipient domain '{domain}' not in allowlist"
+    return None
+
+
+def requires_approval(tool_name: str) -> bool:
+    return _load("policies.yaml").get("tools", {}).get(tool_name, {}).get("requires_approval", False)
