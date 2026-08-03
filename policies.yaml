@@ -1,0 +1,7 @@
+default: deny
+
+roles:
+  hr_readonly:
+    allow: [lookup_employee, read_document]
+  it_admin:
+    allow: [lookup_employee, reset_password, delete_file]

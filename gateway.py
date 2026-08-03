@@ -1,6 +1,8 @@
 """Gateway v1: all agent traffic flows through here - allowlist enforced."""
 import json
 import sys
+import policy
+import yaml
 from pathlib import Path
 
 from mcp import ClientSession, StdioServerParameters
@@ -16,7 +18,7 @@ CORP_TOOLS = StdioServerParameters(
 )
 
 # v1 policy: a hardcoded allowlist. Everything else is denied.
-ALLOWED = {"lookup_employee", "read_document"}
+# ALLOWED = {"lookup_employee", "read_document"}
 
 
 async def _forward(tool_name: str, arguments: dict) -> str:
@@ -29,16 +31,23 @@ async def _forward(tool_name: str, arguments: dict) -> str:
 
 
 @gateway.tool()
-async def list_available_tools() -> str:
-    """List the tools permitted through this gateway."""
-    return json.dumps(sorted(ALLOWED))
+async def list_available_tools(api_key: str) -> str:
+    """List the tools your role permits."""
+    agent = policy.authenticate(api_key)
+    if agent is None:
+        return "DENIED: unknown agent."
+    roles = yaml.safe_load((Path(__file__).parent / "policies.yaml").read_text())["roles"]
+    return json.dumps(roles.get(agent["role"], {}).get("allow", []))
 
 
 @gateway.tool()
-async def call_tool(tool_name: str, arguments: dict) -> str:
-    """Call a corporate tool by name, e.g. call_tool("lookup_employee", {"name": "Jordan Smith"})."""
-    if tool_name not in ALLOWED:
-        return f"DENIED: '{tool_name}' is not permitted through this gateway."
+async def call_tool(api_key: str, tool_name: str, arguments: dict) -> str:
+    """Call a corporate tool. Requires your agent API key."""
+    agent = policy.authenticate(api_key)
+    if agent is None:
+        return "DENIED: unknown agent."
+    if not policy.authorize(agent["role"], tool_name):
+        return f"DENIED: role '{agent['role']}' is not permitted to use '{tool_name}'."
     return await _forward(tool_name, arguments)
 
 

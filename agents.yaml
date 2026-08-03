@@ -1,0 +1,7 @@
+agents:
+  - id: hr-assistant
+    api_key_hash: "7a2a7b6adc45119aa9bb3a42c48e123f5b0534a63317fe4f06acab3a3b4e617e"
+    role: hr_readonly
+  - id: it-admin-agent
+    api_key_hash: "5f1bfcf18139ee46a665db89171ac0654d78c7098512c37f7a64f757cd174ade"
+    role: it_admin
