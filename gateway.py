@@ -6,6 +6,7 @@ import yaml
 import approval
 from pathlib import Path
 import time
+import audit
 from collections import defaultdict, deque
 
 from mcp import ClientSession, StdioServerParameters
@@ -63,17 +64,27 @@ async def call_tool(api_key: str, tool_name: str, arguments: dict) -> str:
     """Call a corporate tool. Requires your agent API key."""
     agent = policy.authenticate(api_key)
     if agent is None:
+        audit.log_event("unknown", "-", tool_name, arguments, "DENY", "unknown agent")
         return "DENIED: unknown agent."
-    if _rate_limited(agent["id"]):
+    aid, role = agent["id"], agent["role"]
+
+    if _rate_limited(aid):
+        audit.log_event(aid, role, tool_name, arguments, "DENY", "rate limit")
         return "DENIED: rate limit exceeded."
-    if not policy.authorize(agent["role"], tool_name):
-        return f"DENIED: role '{agent['role']}' is not permitted to use '{tool_name}'."
+    if not policy.authorize(role, tool_name):
+        audit.log_event(aid, role, tool_name, arguments, "DENY", "not in role allowlist")
+        return f"DENIED: role '{role}' is not permitted to use '{tool_name}'."
     reason = policy.check_constraints(tool_name, arguments)
     if reason:
+        audit.log_event(aid, role, tool_name, arguments, "DENY", f"constraint: {reason}")
         return f"DENIED: constraint violation - {reason}."
     if policy.requires_approval(tool_name):
-        if not await approval.request_approval(agent["id"], tool_name, arguments):
+        if not await approval.request_approval(aid, tool_name, arguments):
+            audit.log_event(aid, role, tool_name, arguments, "DENY", "operator denied/timeout")
             return "DENIED: not approved by operator (or timed out)."
+        audit.log_event(aid, role, tool_name, arguments, "ALLOW", "operator approved")
+    else:
+        audit.log_event(aid, role, tool_name, arguments, "ALLOW", "policy")
     return await _forward(tool_name, arguments)
 
 if __name__ == "__main__":
